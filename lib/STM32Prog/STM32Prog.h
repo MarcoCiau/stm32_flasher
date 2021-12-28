@@ -39,6 +39,8 @@ public:
     bool sendGetIDCommand();
     /*is used to write data to any valid memory address i.e. RAM, Flash memory, or option byte area. */
     bool sendWriteMemoryCommand();
+    /* program binary file from SPIFFS */
+    bool programBinary(char * filename);
 };
 extern STM32Prog stm32Programmer;
 #endif

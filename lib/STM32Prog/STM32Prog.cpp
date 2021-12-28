@@ -1,5 +1,6 @@
 #include "STM32Prog.h"
 #include <ESPDebug.h>
+#include <FS.h>
 #include "stm32_reg.h"
 
 #define NRST 13
@@ -324,6 +325,63 @@ bool STM32Prog::sendWriteMemoryCommand()
         return false;
     }
     return true;
+}
+
+bool STM32Prog::programBinary(char * filename)
+{
+    if (!SPIFFS.exists(filename))
+    {
+        return false; //TODO: add program status
+    }
+
+    File firmwareFs;
+
+    firmwareFs = SPIFFS.open(filename, "r");
+
+    if (!firmwareFs) 
+    {
+        return false; //TODO: add program status
+    }
+
+    uint8_t bini = 0;
+    uint8_t lastBuf = 0;
+
+    uint8_t firmwareBuffer[256];
+
+    bool programOK = false; //program process success flag
+
+    bini = firmwareFs.size() / 256; //byte to bits conversion
+    lastBuf = firmwareFs.size() % 256;
+
+    bool result = sendWriteMemoryCommand();
+    if (!result)
+    {
+        debugSerial.println("Init Write cmd failed");
+        firmwareFs.close();
+        return false;
+    }
+    for (uint8_t i = 0; i < bini; i++)
+    {
+        firmwareFs.read(firmwareBuffer, 256);
+        uint32_t wAddr = STM32_START_ADDR + (256 * i);
+        programOK = writeMemoryBlock(wAddr, firmwareBuffer, 256);
+        if (!programOK)
+        {
+            debugSerial.println("Write firmware failed!");
+            firmwareFs.close();
+            break;
+        } 
+    }
+
+    if (programOK)
+    {
+        /* Send remainder data to STM32 */
+        firmwareFs.read(firmwareBuffer, lastBuf);
+        uint32_t wAddr = STM32_START_ADDR + (256 * lastBuf);
+        programOK = writeMemoryBlock(wAddr, firmwareBuffer, 256);
+    }
+    firmwareFs.close();
+    return programOK;
 }
 
 STM32Prog stm32Programmer;
