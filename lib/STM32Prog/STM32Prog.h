@@ -12,8 +12,12 @@ private:
     void sendCommand(uint8_t cmd);
     /* Helper: parse & debug stm32 pid */
     void parsePID(uint16_t pid);
+    /* Helper: calc checksum for an buffer */
+    uint8_t calcChecksum(uint8_t * data, uint8_t len);
     /* Helper: encode an mem addr */
     void encodeAddr(uint32_t addr, uint8_t *result);
+    /* Helper: write memory block at specific address */
+    bool writeMemoryBlock(uint32_t addr, uint8_t* data, uint8_t len);
     /* Helper: wait for a STM32's response via uart */
     bool waitForResponse();
 

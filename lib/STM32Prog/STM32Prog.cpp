@@ -48,15 +48,90 @@ void STM32Prog::parsePID(uint16_t pid)
     }
 }
 
+uint8_t STM32Prog::calcChecksum(uint8_t * data, uint8_t len)
+{
+    uint8_t checksum = 0;
+    for (uint8_t i = 0; i < len; i++)
+    {
+        checksum ^= data[i];
+    }
+    return checksum;
+}
+
 void STM32Prog::encodeAddr(uint32_t addr, uint8_t *result)
 {
-    uint8_t addrByte[5];
-    for (uint8_t i = 0; i < 4; i++)
+    result[3] = (addr) & 0xFF;
+    result[2] = (addr >> 8) && 0xFF;
+    result[1] = (addr >> 16) && 0xFF;
+    result[0] = (addr >> 24) && 0xFF;
+    result[4] = calcChecksum(result, 4);
+    // result[4] = result[0] ^ result[1] ^ result[2] ^ result[3];
+}
+
+bool STM32Prog::writeMemoryBlock(uint32_t addr, uint8_t* data, uint8_t len)
+{   
+    //send write address + checksum
+    uint8_t addrToWrite[5];
+    encodeAddr(addr, addrToWrite);
+    for (uint8_t i = 0; i < 5; i++)
     {
-        addrByte[i] = (addr >> (i * 8)) && 0xFF;
+        Serial.write(addrToWrite[i]);
     }
-    addrByte[4] = addrByte[3] ^ addrByte[2] ^ addrByte[1] ^ addrByte[0];
-    result = addrByte;
+
+    if (!waitForResponse())
+    {
+        debugSerial.println("Write Block Memory Failed(1): UART no response!");
+        return false;
+    }
+    //check if an ACK is received
+    uint8_t result = STM32_ERROR_STATUS;
+    result = Serial.read();
+    debugSerial.printf("\nWrite Block Memory Result(1) : %#x\n", result);
+
+    if (result != STM32_ACK_STATUS)
+    {
+        debugSerial.println("Write Block Memory Failed(1) : Invalid code response !");
+        return false;
+    }
+
+    /*
+    ---Writing Process - Section 3.6 (AN3155 rev 14) ---
+
+    1. Send a byte, N, which contains the number of data bytes to be written
+    2. Send the user data ((N + 1) bytes)
+    3. Send the checksum (XOR of N and of all data bytes)
+    4. If the write operation was successful, the bootloadertransmits the ACK byte; otherwise 
+    it transmits a NACK byte to the application and aborts the command.
+
+    Note : the maximum length of the block to be written for the STM32 is 256 bytes.
+    */
+
+    /* 1 */
+    Serial.write(len);
+    /* 2 */
+    for (uint8_t i = 0; i < len; i++)
+    {
+        Serial.write(data[i]);
+    }
+    /* 3 */
+    Serial.write(calcChecksum(data, len));
+
+    if (!waitForResponse())
+    {
+        debugSerial.println("Write Block Memory Failed(2): UART no response!");
+        return false;
+    }
+    /* 4 */
+    //check if an ACK is received
+    result = Serial.read();
+    debugSerial.printf("\nWrite Block Memory Result(2) : %#x\n", result);
+
+    if (result != STM32_ACK_STATUS)
+    {
+        debugSerial.println("Write Block Memory Failed(2) : Invalid code response !");
+        return false;
+    }
+    return true;
 }
 
 bool STM32Prog::waitForResponse()
